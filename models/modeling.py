@@ -98,33 +98,7 @@ class Attention(nn.Module):
         attention_output = self.proj_dropout(attention_output)
         return attention_output, weights, self.softmax2(attention_scores)[:,:,:,0]
     
-class Part_Attention(nn.Module):
-    def __init__(self):
-        super(Part_Attention, self).__init__()
 
-    def forward(self, x, contribution):
-        length = x.size()[1]
-        '''
-        last_map = x[:,0,:,:]
-        for i in range(1, length):
-            last_map = torch.matmul(last_map, x[:,i,:,:].transpose(-1,-2))
-            #last_map = torch.matmul(x[:,i,:,:], last_map)
-        '''
-        #print('con shape',contribution.shape)
-        contribution = contribution.mean(1)
-        last_map = x[:,:,0,:].mean(1)
-        #last_map = x.mean(1)
-        #print('last map shape',last_map.shape)
-        #print('con map shape',contribution.shape)
-
-
-        #last_map = last_map[:,0,:]
-        last_map = contribution*last_map
-        #print('last_map_shape',last_map.shape)
-        max_inx = torch.argsort(last_map, dim=1,descending=True)
-
-        #return _, max_inx
-        return None, max_inx
 
 class Mlp(nn.Module):
     def __init__(self, config):
@@ -256,18 +230,50 @@ class Block(nn.Module):
             self.ffn_norm.weight.copy_(np2th(weights[pjoin(ROOT, MLP_NORM, "scale")]))
             self.ffn_norm.bias.copy_(np2th(weights[pjoin(ROOT, MLP_NORM, "bias")]))
 
+            
+class Token_Selection(nn.Module):
+    def __init__(self):
+        super(Token_Selection, self).__init__()
+
+    def forward(self, x, contribution):
+        length = x.size()[1]
+        '''
+        last_map = x[:,0,:,:]
+        for i in range(1, length):
+            last_map = torch.matmul(last_map, x[:,i,:,:].transpose(-1,-2))
+            #last_map = torch.matmul(x[:,i,:,:], last_map)
+        '''
+        #print('con shape',contribution.shape)
+        contribution = contribution.mean(1)
+        last_map = x[:,:,0,:].mean(1)
+        #last_map = x.mean(1)
+        #print('last map shape',last_map.shape)
+        #print('con map shape',contribution.shape)
+
+
+        #last_map = last_map[:,0,:]
+        last_map = contribution*last_map
+        #print('last_map_shape',last_map.shape)
+        max_inx = torch.argsort(last_map, dim=1,descending=True)
+
+        #return _, max_inx
+        return None, max_inx            
 
 class Encoder(nn.Module):
     def __init__(self, config, vis):
         super(Encoder, self).__init__()
         self.vis = vis
         self.layer = nn.ModuleList()
-        self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
-        self.part_select = Part_Attention()
-        self.part_layer = Block(config,vis)
-        self.part_norm = LayerNorm(config.hidden_size, eps=1e-6)
-        for _ in range(config.transformer["num_layers"]-1):
-        #for _ in range(config.transformer["num_layers"]):
+        self.feature_fusion=config.feature_fusion
+        num_layers = config.transformer["num_layers"]
+        if config.feature_fusion:
+            self.ff_token_select = Token_Selection()
+            self.ff_last_layer = Block(config,vis)
+            num_layers -= 1
+            self.ff_encoder_norm=LayerNorm(config.hidden_size, eps=1e-6)
+        else:
+            self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        for _ in range(num_layers):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
 
@@ -275,32 +281,30 @@ class Encoder(nn.Module):
     def forward(self, hidden_states):
         attn_weights = []
         contributions = []
-        parts = [[] for i in range(hidden_states.shape[0])]
+        tokens = [[] for i in range(hidden_states.shape[0])]
         for layer_block in self.layer:
             hidden_states, weights, contribution = layer_block(hidden_states)
-            #'''
-            part_num, part_inx = self.part_select(weights,contribution)
-            B = part_inx.shape[0]
-            #part_inx = part_inx + 1
-            for i in range(B):
-                parts[i].extend(hidden_states[i, part_inx[i,:12]])
+            if self.feature_fusion:
+                selected_num, selected_inx = self.ff_token_select(weights,contribution)
+                B = selected_inx.shape[0]
+                #part_inx = part_inx + 1
+                for i in range(B):
+                    tokens[i].extend(hidden_states[i, selected_inx[i,:12]])
             #'''
             if self.vis:
                 attn_weights.append(weights)
                 contributions.append(contribution)
-        '''
-        encoded = self.encoder_norm(hidden_states)
-        
+
+        if self.feature_fusion:
+            tokens=[torch.stack(token) for token in tokens]
+            tokens = torch.stack(tokens).squeeze(1)
+            concat = torch.cat((hidden_states[:,0].unsqueeze(1), tokens), dim=1)
+            #print('concat shape', concat.shape)
+            ff_states, ff_weights, ff_contri = self.ff_last_layer(concat)
+            encoded = self.ff_encoder_norm(ff_states) 
+        else:
+            encoded = self.encoder_norm(hidden_states)
         return encoded, attn_weights
-        '''
-        parts=[torch.stack(part) for part in parts]
-        
-        parts = torch.stack(parts).squeeze(1)
-        concat = torch.cat((hidden_states[:,0].unsqueeze(1), parts), dim=1)
-        #print('concat shape', concat.shape)
-        part_states, part_weights, part_contri = self.part_layer(concat)
-        part_encoded = self.part_norm(part_states) 
-        return part_encoded, attn_weights
         
 
 
@@ -325,6 +329,7 @@ class VisionTransformer(nn.Module):
 
         self.transformer = Transformer(config, img_size, vis)
         self.head = Linear(config.hidden_size, num_classes)
+        self.feature_fusion = config.feature_fusion
 
     def forward(self, x, labels=None):
         x, attn_weights = self.transformer(x)
@@ -349,8 +354,13 @@ class VisionTransformer(nn.Module):
             self.transformer.embeddings.patch_embeddings.weight.copy_(np2th(weights["embedding/kernel"], conv=True))
             self.transformer.embeddings.patch_embeddings.bias.copy_(np2th(weights["embedding/bias"]))
             self.transformer.embeddings.cls_token.copy_(np2th(weights["cls"]))
-            self.transformer.encoder.encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
-            self.transformer.encoder.encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
+            if self.feature_fusion:
+                pass
+                #self.transformer.encoder.ff_encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
+                #self.transformer.encoder.ff_encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
+            else:
+                self.transformer.encoder.encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
+                self.transformer.encoder.encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
 
             posemb = np2th(weights["Transformer/posembed_input/pos_embedding"])
             posemb_new = self.transformer.embeddings.position_embeddings
@@ -378,7 +388,7 @@ class VisionTransformer(nn.Module):
                 self.transformer.embeddings.position_embeddings.copy_(np2th(posemb))
 
             for bname, block in self.transformer.encoder.named_children():
-                if bname.startswith('part') == False:
+                if bname.startswith('ff') == False:
                     for uname, unit in block.named_children():
                         unit.load_from(weights, n_block=uname)
 

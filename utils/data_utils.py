@@ -3,9 +3,11 @@ import logging
 import torch
 
 from torchvision import transforms, datasets
-from .dataset import soybean200, cotton, CUB
+from .dataset import soybean200, cotton, CUB, INat2017, dogs, CarsDataset
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
 from PIL import Image
+from .autoaugment import AutoAugImageNetPolicy
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,19 @@ def get_loader(args):
                                     train=False,
                                     download=True,
                                     transform=transform_test) if args.local_rank in [-1, 0] else None
-        
+    elif args.dataset == 'INat2017':
+        train_transform=transforms.Compose([transforms.Resize((400, 400), Image.BILINEAR),
+                                    transforms.RandomCrop((304, 304)),
+                                    transforms.RandomHorizontalFlip(),
+                                    AutoAugImageNetPolicy(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        test_transform=transforms.Compose([transforms.Resize((400, 400), Image.BILINEAR),
+                                    transforms.CenterCrop((304, 304)),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        trainset = INat2017(args.data_root, 'train', train_transform)
+        testset = INat2017(args.data_root, 'val', test_transform)        
     elif args.dataset== "soybean200" or args.dataset=="cotton":
         train_transform=transforms.Compose([transforms.Resize((args.resize_size, args.resize_size),Image.BILINEAR),
                                     transforms.RandomCrop((args.img_size, args.img_size)),
@@ -62,10 +76,33 @@ def get_loader(args):
                                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         trainset = eval(args.dataset)(root=args.data_root, is_train=True, transform=train_transform)
         testset = eval(args.dataset)(root=args.data_root, is_train=False, transform = test_transform)
+    elif args.dataset == 'dog':
+        train_transform=transforms.Compose([transforms.Resize((600, 600), Image.BILINEAR),
+                                    transforms.RandomCrop((448, 448)),
+                                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                                    transforms.RandomHorizontalFlip(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        test_transform=transforms.Compose([transforms.Resize((600, 600), Image.BILINEAR),
+                                    transforms.CenterCrop((448, 448)),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        trainset = dogs(root=args.data_root,
+                                train=True,
+                                cropped=False,
+                                transform=train_transform,
+                                download=True
+                                )
+        testset = dogs(root=args.data_root,
+                                train=False,
+                                cropped=False,
+                                transform=test_transform,
+                                download=False
+                                )
     elif args.dataset== "CUB":
         train_transform=transforms.Compose([transforms.Resize((args.resize_size, args.resize_size),Image.BILINEAR),
                                     transforms.RandomCrop((args.img_size, args.img_size)),
-                                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4), # my add
                                     transforms.RandomHorizontalFlip(),
                                     #transforms.RandomVerticalFlip(),
                                     transforms.ToTensor(),
@@ -80,7 +117,29 @@ def get_loader(args):
                                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         trainset = eval(args.dataset)(root=args.data_root, is_train=True, transform=train_transform)
         testset = eval(args.dataset)(root=args.data_root, is_train=False, transform = test_transform)
-        
+    elif args.dataset == 'car':
+        trainset = CarsDataset(os.path.join(args.data_root,'devkit/cars_train_annos.mat'),
+                            os.path.join(args.data_root,'cars_train'),
+                            os.path.join(args.data_root,'devkit/cars_meta.mat'),
+                            # cleaned=os.path.join(data_dir,'cleaned.dat'),
+                            transform=transforms.Compose([
+                                    transforms.Resize((600, 600), Image.BILINEAR),
+                                    transforms.RandomCrop((448, 448)),
+                                    transforms.RandomHorizontalFlip(),
+                                    AutoAugImageNetPolicy(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+                            )
+        testset = CarsDataset(os.path.join(args.data_root,'cars_test_annos_withlabels.mat'),
+                            os.path.join(args.data_root,'cars_test'),
+                            os.path.join(args.data_root,'devkit/cars_meta.mat'),
+                            # cleaned=os.path.join(data_dir,'cleaned_test.dat'),
+                            transform=transforms.Compose([
+                                    transforms.Resize((600, 600), Image.BILINEAR),
+                                    transforms.CenterCrop((448, 448)),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+                            )        
     if args.local_rank == 0:
         torch.distributed.barrier()
 

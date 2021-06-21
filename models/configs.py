@@ -46,6 +46,7 @@ def get_b16_config():
     config.representation_size = None
     config.split = 'non-overlap'
     config.slide_step = 14
+    config.feature_fusion= False
     return config
 
 

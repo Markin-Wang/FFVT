@@ -63,6 +63,8 @@ def reduce_mean(tensor, nprocs):
 def setup(args):
     # Prepare model
     config = CONFIGS[args.model_type]
+    if args.feature_fusion:
+        config.feature_fusion=True
     
     if args.dataset == "cifar10":
         num_classes=10
@@ -72,9 +74,12 @@ def setup(args):
         num_classes=200
     elif args.dataset== "cotton":
         num_classes=80
+    elif args.dataset == "dog":
+        num_classes = 120
     elif args.dataset == "CUB":
         num_classes=200
-
+    elif args.dataset == "car":
+        num_classes=196
 
     model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, vis=True)
     model.load_from(np.load(args.pretrained_dir))
@@ -270,7 +275,7 @@ def train(args, model):
         train_accuracy = reduce_mean(accuracy, args.nprocs)
         train_accuracy = train_accuracy.detach().cpu().numpy()
         logger.info("train accuracy so far: %f" % train_accuracy)
-        logger.info("best accuracy in step: %f" % best_step)
+        logger.info("best valid accuracy in step: %f" % best_step)
         losses.reset()
         if global_step % t_total == 0:
             break
@@ -286,7 +291,7 @@ def main():
     # Required parameters
     parser.add_argument("--name", required=True,
                         help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "soybean200","cotton", "CUB"], default="cifar10",
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "soybean200","cotton", "CUB", "dog","car"], default="cifar10",
                         help="Which downstream task.")
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
                                                  "ViT-L_32", "ViT-H_14", "R50-ViT-B_16"],
@@ -333,6 +338,8 @@ def main():
     parser.add_argument('--fp16_opt_level', type=str, default='O2',
                         help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
                              "See details at https://nvidia.github.io/apex/amp.html")
+    parser.add_argument('--feature_fusion', action='store_true',
+                        help="Whether to use feature fusion")
     parser.add_argument('--loss_scale', type=float, default=0,
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
