@@ -678,3 +678,46 @@ class soybean_gene():
 
     def __len__(self):
         return len(self.imgs_name)
+    
+class FGVC_aircraft():
+    def __init__(self, root, is_train=True, data_len=None, transform=None):
+        self.root = root
+        self.is_train = is_train
+        self.transform = transform
+        train_img_path = os.path.join(self.root, 'data', 'images')
+        test_img_path = os.path.join(self.root, 'data', 'images')
+        train_label_file = open(os.path.join(self.root, 'data', 'train.txt'))
+        test_label_file = open(os.path.join(self.root, 'data', 'test.txt'))
+        train_img_label = []
+        test_img_label = []
+        for line in train_label_file:
+            train_img_label.append([os.path.join(train_img_path,line[:-1].split(' ')[0]), int(line[:-1].split(' ')[1])-1])
+        for line in test_label_file:
+            test_img_label.append([os.path.join(test_img_path,line[:-1].split(' ')[0]), int(line[:-1].split(' ')[1])-1])
+        self.train_img_label = train_img_label[:data_len]
+        self.test_img_label = test_img_label[:data_len]
+
+    def __getitem__(self, index):
+        if self.is_train:
+            img, target = scipy.misc.imread(self.train_img_label[index][0]), self.train_img_label[index][1]
+            if len(img.shape) == 2:
+                img = np.stack([img] * 3, 2)
+            img = Image.fromarray(img, mode='RGB')
+            if self.transform is not None:
+                img = self.transform(img)
+
+        else:
+            img, target = scipy.misc.imread(self.test_img_label[index][0]), self.test_img_label[index][1]
+            if len(img.shape) == 2:
+                img = np.stack([img] * 3, 2)
+            img = Image.fromarray(img, mode='RGB')
+            if self.transform is not None:
+                img = self.transform(img)
+
+        return img, target
+
+    def __len__(self):
+        if self.is_train:
+            return len(self.train_img_label)
+        else:
+            return len(self.test_img_label)

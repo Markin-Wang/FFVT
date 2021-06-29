@@ -16,6 +16,7 @@ import numpy as np
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 from torch.nn.modules.utils import _pair
 from scipy import ndimage
+import torch.nn.functional as F
 
 import models.configs as configs
 
@@ -44,6 +45,28 @@ def np2th(weights, conv=False):
 
 def swish(x):
     return x * torch.sigmoid(x)
+
+class LabelSmoothing(nn.Module):
+    """
+    NLL loss with label smoothing.
+    """
+    def __init__(self, smoothing=0.0):
+        """
+        Constructor for the LabelSmoothing module.
+        :param smoothing: label smoothing factor
+        """
+        super(LabelSmoothing, self).__init__()
+        self.confidence = 1.0 - smoothing
+        self.smoothing = smoothing
+
+    def forward(self, x, target):
+        logprobs = torch.nn.functional.log_softmax(x, dim=-1)
+
+        nll_loss = -logprobs.gather(dim=-1, index=target.unsqueeze(1))
+        nll_loss = nll_loss.squeeze(1)
+        smooth_loss = -logprobs.mean(dim=-1)
+        loss = self.confidence * nll_loss + self.smoothing * smooth_loss
+        return loss.mean()
 
 
 ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
@@ -130,7 +153,7 @@ class Embeddings(nn.Module):
     """
     def __init__(self, config, img_size, in_channels=3):
         super(Embeddings, self).__init__()
-        self.hybrid = None
+        self.hybrid = True
         img_size = _pair(img_size)
 
         patch_size = _pair(config.patches["size"])
@@ -251,7 +274,7 @@ class Token_Selection(nn.Module):
         #print('con map shape',contribution.shape)
 
 
-        #last_map = last_map[:,0,:]
+        #last_map = contribution
         last_map = contribution*last_map
         #print('last_map_shape',last_map.shape)
         max_inx = torch.argsort(last_map, dim=1,descending=True)
@@ -321,10 +344,11 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False):
+    def __init__(self, config, img_size=224, num_classes=21843, smoothing_value=0, zero_head=False, vis=False):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
+        self.smoothing_value = smoothing_value
         self.classifier = config.classifier
 
         self.transformer = Transformer(config, img_size, vis)
@@ -336,9 +360,15 @@ class VisionTransformer(nn.Module):
         logits = self.head(x[:, 0])
 
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
-            return loss,logits
+            if self.smoothing_value == 0:
+                loss_fct = CrossEntropyLoss()
+            else:
+                loss_fct = LabelSmoothing(self.smoothing_value)
+            ce_loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
+            #contrast_loss = con_loss(x[:, 0], labels.view(-1))
+            #loss = ce_loss + contrast_loss
+            loss = ce_loss
+            return loss, logits
         else:
             return logits, attn_weights
 
@@ -355,9 +385,9 @@ class VisionTransformer(nn.Module):
             self.transformer.embeddings.patch_embeddings.bias.copy_(np2th(weights["embedding/bias"]))
             self.transformer.embeddings.cls_token.copy_(np2th(weights["cls"]))
             if self.feature_fusion:
-                pass
-                #self.transformer.encoder.ff_encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
-                #self.transformer.encoder.ff_encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
+                #pass
+                self.transformer.encoder.ff_encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
+                self.transformer.encoder.ff_encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
             else:
                 self.transformer.encoder.encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
                 self.transformer.encoder.encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
@@ -403,6 +433,19 @@ class VisionTransformer(nn.Module):
                     for uname, unit in block.named_children():
                         unit.load_from(weights, n_block=bname, n_unit=uname)
 
+def con_loss(features, labels):
+    B, _ = features.shape
+    features = F.normalize(features)
+    cos_matrix = features.mm(features.t())
+    pos_label_matrix = torch.stack([labels == labels[i] for i in range(B)]).float()
+    neg_label_matrix = 1 - pos_label_matrix
+    pos_cos_matrix = 1 - cos_matrix
+    neg_cos_matrix = cos_matrix - 0.4
+    neg_cos_matrix[neg_cos_matrix < 0] = 0
+    loss = (pos_cos_matrix * pos_label_matrix).sum() + (neg_cos_matrix * neg_label_matrix).sum()
+    loss /= (B * B)
+    return loss                        
+                        
 
 CONFIGS = {
     'ViT-B_16': configs.get_b16_config(),

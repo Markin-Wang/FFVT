@@ -80,8 +80,10 @@ def setup(args):
         num_classes=200
     elif args.dataset == "car":
         num_classes=196
+    elif args.dataset == 'air':
+        num_classes = 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, vis=True)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, vis=True, smoothing_value=args.smoothing_value)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -217,6 +219,7 @@ def train(args, model):
             batch = tuple(t.to(args.device) for t in batch)
             x, y = batch
             loss, logits = model(x, y)
+            #loss = loss.mean() # for contrastive learning
             
             preds = torch.argmax(logits, dim=-1)
 
@@ -291,7 +294,7 @@ def main():
     # Required parameters
     parser.add_argument("--name", required=True,
                         help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "soybean200","cotton", "CUB", "dog","car"], default="cifar10",
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "soybean200","cotton", "CUB", "dog","car","air"], default="cifar10",
                         help="Which downstream task.")
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
                                                  "ViT-L_32", "ViT-H_14", "R50-ViT-B_16"],
@@ -308,7 +311,7 @@ def main():
                         help="Resolution size")
     parser.add_argument("--train_batch_size", default=512, type=int,
                         help="Total batch size for training.")
-    parser.add_argument("--eval_batch_size", default=16, type=int,
+    parser.add_argument("--eval_batch_size", default=4, type=int,
                         help="Total batch size for eval.")
     parser.add_argument("--eval_every", default=100, type=int,
                         help="Run prediction on validation set every so many steps."
@@ -345,6 +348,8 @@ def main():
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
     parser.add_argument('--data_root', type=str, default='./data')
+    parser.add_argument('--smoothing_value', type=float, default=0.0,
+                        help="Label smoothing value\n")
     
     args = parser.parse_args()
     args.data_root = '{}/{}'.format(args.data_root, args.dataset)

@@ -3,7 +3,7 @@ import logging
 import torch
 
 from torchvision import transforms, datasets
-from .dataset import soybean200, cotton, CUB, INat2017, dogs, CarsDataset
+from .dataset import soybean200, cotton, CUB, INat2017, dogs, CarsDataset, FGVC_aircraft
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
 from PIL import Image
 from .autoaugment import AutoAugImageNetPolicy
@@ -66,7 +66,9 @@ def get_loader(args):
                                     #transforms.RandomVerticalFlip(),
                                     transforms.ToTensor(),
                                     #transforms.Normalize([0.8416, 0.867, 0.8233], [0.2852, 0.246, 0.3262])])
-                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                                    #transforms.RandomErasing(scale=(0.02, 0.33), ratio=(0.3, 3.3))
+                                           ])
         test_transform=transforms.Compose([
             transforms.Resize((args.resize_size, args.resize_size), Image.BILINEAR),
                                     transforms.CenterCrop((args.img_size, args.img_size)),
@@ -104,10 +106,11 @@ def get_loader(args):
                                     transforms.RandomCrop((args.img_size, args.img_size)),
                                     transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4), # my add
                                     transforms.RandomHorizontalFlip(),
-                                    #transforms.RandomVerticalFlip(),
+                                    
                                     transforms.ToTensor(),
                                     #transforms.Normalize([0.8416, 0.867, 0.8233], [0.2852, 0.246, 0.3262])])
-                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                                           ])
         test_transform=transforms.Compose([
             transforms.Resize((args.resize_size, args.resize_size), Image.BILINEAR),
                                     transforms.CenterCrop((args.img_size, args.img_size)),
@@ -139,7 +142,26 @@ def get_loader(args):
                                     transforms.CenterCrop((448, 448)),
                                     transforms.ToTensor(),
                                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-                            )        
+                            )
+    elif args.dataset== "air":
+        train_transform=transforms.Compose([transforms.Resize((args.resize_size, args.resize_size),Image.BILINEAR),
+                                    transforms.RandomCrop((args.img_size, args.img_size)),
+                                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4), # my add
+                                    transforms.RandomHorizontalFlip(),
+                                    #transforms.RandomVerticalFlip(),
+                                    transforms.ToTensor(),
+                                    #transforms.Normalize([0.8416, 0.867, 0.8233], [0.2852, 0.246, 0.3262])])
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        test_transform=transforms.Compose([
+            transforms.Resize((args.resize_size, args.resize_size), Image.BILINEAR),
+                                    transforms.CenterCrop((args.img_size, args.img_size)),
+            #transforms.Resize((args.img_size, args.img_size)),
+                                    transforms.ToTensor(),
+                                    #transforms.Normalize([0.8416, 0.867, 0.8233], [0.2852, 0.246, 0.3262])])
+                                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        trainset = FGVC_aircraft(root=args.data_root, is_train=True, transform=train_transform)
+        testset = FGVC_aircraft(root=args.data_root, is_train=False, transform = test_transform)
+    
     if args.local_rank == 0:
         torch.distributed.barrier()
 
