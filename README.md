@@ -6,21 +6,18 @@ PyTorch implementation of
 
 If you use the code in this repo for your work, please cite the following bib entries:
 
-    @INPROCEEDINGS{9506424,
+    @article{wang2021feature,
+      title={Feature Fusion Vision Transformer for Fine-Grained Visual Categorization},
       author={Wang, Jun and Yu, Xiaohan and Gao, Yongsheng},
-      booktitle={2021 IEEE International Conference on Image Processing (ICIP)}, 
-      title={Feature Fusion Vision Transformer for Fine-Grained Visual Categorization}, 
-      year={2021},
-      volume={},
-      number={},
-      pages={1044-1048},
-      doi={10.1109/ICIP42928.2021.9506424}
-      }
+      journal={arXiv e-prints},
+      pages={arXiv--2107},
+      year={2021}
+    }
 
 
 ## Abstract
 
-In this work, we present a novel mask guided attention (MGA) method for fine-grained patchy image classification. The key challenge of fine-grained patchy image classification lies in two folds, ultra-fine-grained inter-category variances among objects and very few data available for training. This motivates us to consider employing more useful supervision signal to train a discriminative model within limited training samples. Specifically, the proposed MGA integrates a pre-trained semantic segmentation model that produces auxiliary supervision signal, i.e., patchy attention mask, enabling a discriminative representation learning. The patchy attention mask drives the classifier to filter out the insignificant parts of images (e.g., common features between different categories), which enhances the robustness of MGA for the fine-grained patchy image classification. We verify the effectiveness of our method on three publicly available patchy image datasets. Experimental results demonstrate that our MGA method achieves superior performance on three datasets compared with the state-of-the-art methods. In addition, our ablation study shows that MGA improves the accuracy by 2.25% and 2% on the SoyCultivarVein and BtfPIS datasets, indicating its practicality towards solving the fine-grained patchy image classification.
+The core for tackling the fine-grained visual categorization (FGVC) is to learn subtleyet discriminative features. Most previous works achieve this by explicitly selecting thediscriminative parts or integrating the attention mechanism via CNN-based approaches.However,  these  methods  enhance  the  computational  complexity  and  make  the  modeldominated  by  the  regions  containing  the  most  of  the  objects.   Recently,  vision  trans-former (ViT) has achieved SOTA performance on general image recognition tasks.  Theself-attention mechanism aggregates and weights the information from all patches to theclassification token,  making it perfectly suitable for FGVC. Nonetheless,  the classifi-cation  token  in  the  deep  layer  pays  more  attention  to  the  global  information,  lackingthe local and low-level features that are essential for FGVC. In this work, we proposea novel pure transformer-based framework Feature Fusion Vision Transformer (FFVT)where we aggregate the important tokens from each transformer layer to compensate thelocal, low-level and middle-level information.  We design a novel token selection mod-ule called mutual attention weight selection (MAWS) to guide the network effectivelyand efficiently towards selecting discriminative tokens without introducing extra param-eters.  We verify the effectiveness of FFVT on four benchmarks where FFVT achievesthe state-of-the-art performance.
 
 <img src='architecture.png' width='1280' height='350'>
 
@@ -29,27 +26,26 @@ In this work, we present a novel mask guided attention (MGA) method for fine-gra
 
 The following packages are required to run the scripts:
 - [Python >= 3.6]
-- [PyTorch >= 1.0]
+- [PyTorch = 1.5]
 - [Torchvision]
 
 ## Dataset
-The dataset can be downloaded from [Google Drive](https://drive.google.com/drive/folders/1EF_iamMlnb0QYS2xiQRq--fxm7an4tv7?usp=sharing).
+You can download the datasets from the links below:
 
-soybean_1_1: The soycultivarvein dataset with the training set:test set=1:1. For comparison to the state-of-the-art hand-crafted methods.
-
-soybean_2_1: The soycultivarvein dataset with the training set:test set=2:1.
-
-
-## Training scripts for MGANet with the backbone network Densenet161.
-Train the model on the Soybean dataset. We run our experiments on 4x2080Ti/4x1080Ti with the batchsize of 32.
-
-    $ python train.py --dataset soybean_2_1 --lr 0.05 --backbone_class densenet161
++ [CUB-200-2011](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html).
++ [Stanford Dogs](http://vision.stanford.edu/aditya86/ImageNetDogs/)
++ [Cotton and Soy.Loc](https://drive.google.com/drive/folders/1EF_iamMlnb0QYS2xiQRq--fxm7an4tv7?usp=sharing).
 
 
-## Testing scripts for MGANet with the backbone network Densenet161.
-Test the model on the Soybean dataset:
+## Training scripts for FFVT on Cotton dataset.
+Train the model on the Cotton dataset. We run our experiments on 4x2080Ti/4x1080Ti with the batchsize of 32.
 
-    $ python test.py  --dataset soybean_2_1 --backbone_class densenet161
+    $ python3 -m torch.distributed.launch --nproc_per_node 4 train.py --name {name} --dataset cotton --model_type ViT-B_16 --pretrained_dir {pretrained_model_dir} --img_size 384 --resize_size 500 --train_batch_size 8 --learning_rate 0.02 --num_steps 1600 --fp16 --eval_every 16 --feature_fusion
+
+## Training scripts for FFVT on Soy.Loc dataset.
+Train the model on the Cotton dataset. We run our experiments on 4x2080Ti/4x1080Ti with the batchsize of 32.
+
+    $ python3 -m torch.distributed.launch --nproc_per_node 4 train.py --name {name} --dataset soyloc --model_type ViT-B_16 --pretrained_dir {pretrained_model_dir} --img_size 384 --resize_size 500 --train_batch_size 8 --learning_rate 0.02 --num_steps 4750 --fp16 --eval_every 50 --feature_fusion
     
         
             
@@ -58,19 +54,15 @@ Test the model on the Soybean dataset:
 
 [Trained model Google Drive](https://drive.google.com/drive/folders/11SA7PGR9NbyJEaXFOHwA_PGiORdIEoYZ?usp=sharing)
 
-## Segmentation Experiments.
-For the leaf vein segmentation experiments, please refer to [Nvidia/semantic-segmentation](https://github.com/NVIDIA/semantic-segmentation) to gain the details.
-
-All the three datasets are trained with the crop size (448,448) and 60 epochs.
 
 
 
 ## Acknowledgment
 Thanks for the advice and guidance given by Dr.Xiaohan Yu and Prof. Yongsheng Gao.
 
-Our project references the codes in the following repos.
-- [pytorch-cifar](https://github.com/kuangliu/pytorch-cifar)
-- [Nvidia/semantic-segmentation](https://github.com/NVIDIA/semantic-segmentation)
+Our project references the codes in the following repos. Thanks for thier works and sharing.
+- [ViT-pytorch](https://github.com/jeonsworld/ViT-pytorch)
+- [TransFG](https://github.com/TACJu/TransFG)
 
 
 
