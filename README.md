@@ -1,4 +1,4 @@
-# MASK GUIDED ATTENTION FOR FINE-GRAINED PATCHY IMAGE CLASSIFICATION
+# Feature Fusion Vision Transformer for Fine-Grained Visual Categorization
 
 PyTorch implementation of 
 
