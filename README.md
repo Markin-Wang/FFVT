@@ -1,8 +1,6 @@
 # Feature Fusion Vision Transformer for Fine-Grained Visual Categorization
 
-PyTorch implementation of 
-
-[Feature Fusion Vision Transformer for Fine-Grained Visual Categorization](https://arxiv.org/pdf/2107.02341.pdf) ( BMVC 2021 ) 
+PyTorch implementation of [Feature Fusion Vision Transformer for Fine-Grained Visual Categorization](https://arxiv.org/pdf/2107.02341.pdf) ( BMVC 2021 ) 
 
 If you use the code in this repo for your work, please cite the following bib entries:
 
