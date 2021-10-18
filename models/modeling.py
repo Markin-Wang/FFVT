@@ -23,11 +23,11 @@ import models.configs as configs
 from .modeling_resnet import ResNetV2
 
 
-logger = logging.getLogger(__name__)
-
 
 ATTENTION_Q = "MultiHeadDotProductAttention_1/query"
 ATTENTION_K = "MultiHeadDotProductAttention_1/key"
+logger = logging.getLogger(__name__)
+
 ATTENTION_V = "MultiHeadDotProductAttention_1/value"
 ATTENTION_OUT = "MultiHeadDotProductAttention_1/out"
 FC_0 = "MlpBlock_3/Dense_0"
@@ -153,27 +153,27 @@ class Embeddings(nn.Module):
     """
     def __init__(self, config, img_size, in_channels=3):
         super(Embeddings, self).__init__()
-        self.hybrid = True
+        self.hybrid = None
         img_size = _pair(img_size)
 
-        patch_size = _pair(config.patches["size"])
-        if config.split == 'non-overlap':
+        if config.patches.get("grid") is not None:
+            grid_size = config.patches["grid"]
+            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])
+            n_patches = (img_size[0] // 16) * (img_size[1] // 16)
+            self.hybrid = True
+        else:
+            patch_size = _pair(config.patches["size"])
             n_patches = (img_size[0] // patch_size[0]) * (img_size[1] // patch_size[1])
-            self.patch_embeddings = Conv2d(in_channels=in_channels,
-                                       out_channels=config.hidden_size,
-                                       kernel_size=patch_size,
-                                       stride=patch_size)
-        elif config.split == 'overlap':
-            n_patches = ((img_size[0] - patch_size[0]) // config.slide_step + 1) * ((img_size[1] - patch_size[1]) // config.slide_step + 1)
-            self.patch_embeddings = Conv2d(in_channels=in_channels,
-                                        out_channels=config.hidden_size,
-                                        kernel_size=patch_size,
-                                        stride=(config.slide_step, config.slide_step))
+            self.hybrid = False
 
         if self.hybrid:
             self.hybrid_model = ResNetV2(block_units=config.resnet.num_layers,
                                          width_factor=config.resnet.width_factor)
             in_channels = self.hybrid_model.width * 16
+        self.patch_embeddings = Conv2d(in_channels=in_channels,
+                                       out_channels=config.hidden_size,
+                                       kernel_size=patch_size,
+                                       stride=patch_size)
         self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches+1, config.hidden_size))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
 
@@ -185,10 +185,12 @@ class Embeddings(nn.Module):
 
         if self.hybrid:
             x = self.hybrid_model(x)
+
         x = self.patch_embeddings(x)
         x = x.flatten(2)
         x = x.transpose(-1, -2)
         x = torch.cat((cls_tokens, x), dim=1)
+
 
         embeddings = x + self.position_embeddings
         embeddings = self.dropout(embeddings)
@@ -254,32 +256,22 @@ class Block(nn.Module):
             self.ffn_norm.bias.copy_(np2th(weights[pjoin(ROOT, MLP_NORM, "bias")]))
 
             
-class Token_Selection(nn.Module):
+class MAWS(nn.Module):
+    # mutual attention weight selection
     def __init__(self):
-        super(Token_Selection, self).__init__()
+        super(MAWS, self).__init__()
 
-    def forward(self, x, contribution):
+    def forward(self, x, contributions):
         length = x.size()[1]
-        '''
-        last_map = x[:,0,:,:]
-        for i in range(1, length):
-            last_map = torch.matmul(last_map, x[:,i,:,:].transpose(-1,-2))
-            #last_map = torch.matmul(x[:,i,:,:], last_map)
-        '''
-        #print('con shape',contribution.shape)
-        contribution = contribution.mean(1)
-        last_map = x[:,:,0,:].mean(1)
-        #last_map = x.mean(1)
-        #print('last map shape',last_map.shape)
-        #print('con map shape',contribution.shape)
+
+        contributions = contributions.mean(1)
+        weights = x[:,:,0,:].mean(1)
+
+        scores = contributions*weights
+
+        max_inx = torch.argsort(scores, dim=1,descending=True)
 
 
-        #last_map = contribution
-        last_map = contribution*last_map
-        #print('last_map_shape',last_map.shape)
-        max_inx = torch.argsort(last_map, dim=1,descending=True)
-
-        #return _, max_inx
         return None, max_inx            
 
 class Encoder(nn.Module):
@@ -288,9 +280,10 @@ class Encoder(nn.Module):
         self.vis = vis
         self.layer = nn.ModuleList()
         self.feature_fusion=config.feature_fusion
+        self.num_token = config.num_token
         num_layers = config.transformer["num_layers"]
         if config.feature_fusion:
-            self.ff_token_select = Token_Selection()
+            self.ff_token_select = MAWS()
             self.ff_last_layer = Block(config,vis)
             num_layers -= 1
             self.ff_encoder_norm=LayerNorm(config.hidden_size, eps=1e-6)
@@ -308,17 +301,18 @@ class Encoder(nn.Module):
         for layer_block in self.layer:
             hidden_states, weights, contribution = layer_block(hidden_states)
             if self.feature_fusion:
+                # perform feature fusion
                 selected_num, selected_inx = self.ff_token_select(weights,contribution)
                 B = selected_inx.shape[0]
-                #part_inx = part_inx + 1
                 for i in range(B):
-                    tokens[i].extend(hidden_states[i, selected_inx[i,:12]])
+                    tokens[i].extend(hidden_states[i, selected_inx[i,:self.num_token]])
             #'''
             if self.vis:
                 attn_weights.append(weights)
                 contributions.append(contribution)
 
         if self.feature_fusion:
+            # perform feature fusion
             tokens=[torch.stack(token) for token in tokens]
             tokens = torch.stack(tokens).squeeze(1)
             concat = torch.cat((hidden_states[:,0].unsqueeze(1), tokens), dim=1)
@@ -344,12 +338,13 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, smoothing_value=0, zero_head=False, vis=False):
+    def __init__(self, config, img_size=224, num_classes=21843, smoothing_value=0, zero_head=False, vis=False, dataset='cotton'):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.smoothing_value = smoothing_value
         self.classifier = config.classifier
+        self.dataset=dataset
 
         self.transformer = Transformer(config, img_size, vis)
         self.head = Linear(config.hidden_size, num_classes)
@@ -385,9 +380,7 @@ class VisionTransformer(nn.Module):
             self.transformer.embeddings.patch_embeddings.bias.copy_(np2th(weights["embedding/bias"]))
             self.transformer.embeddings.cls_token.copy_(np2th(weights["cls"]))
             if self.feature_fusion:
-                #pass
-                self.transformer.encoder.ff_encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
-                self.transformer.encoder.ff_encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
+                pass
             else:
                 self.transformer.encoder.encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
                 self.transformer.encoder.encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))

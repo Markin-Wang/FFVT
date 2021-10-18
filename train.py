@@ -8,6 +8,7 @@ import random
 import numpy as np
 
 from datetime import timedelta
+import time
 
 import torch
 import torch.distributed as dist
@@ -65,12 +66,13 @@ def setup(args):
     config = CONFIGS[args.model_type]
     if args.feature_fusion:
         config.feature_fusion=True
+    config.num_token = args.num_token
     
     if args.dataset == "cifar10":
         num_classes=10
     elif args.dataset == "cifar100":
         num_classes=100
-    elif args.dataset == "soybean200":
+    elif args.dataset == "soyloc":
         num_classes=200
     elif args.dataset== "cotton":
         num_classes=80
@@ -83,7 +85,7 @@ def setup(args):
     elif args.dataset == 'air':
         num_classes = 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, vis=True, smoothing_value=args.smoothing_value)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, vis=True, smoothing_value=args.smoothing_value, dataset=args.dataset)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -174,10 +176,17 @@ def train(args, model):
     train_loader, test_loader = get_loader(args)
 
     # Prepare optimizer and scheduler
+    '''    
     optimizer = torch.optim.SGD(model.parameters(),
                                 lr=args.learning_rate,
                                 momentum=0.9,
                                 weight_decay=args.weight_decay)
+    '''
+    # for hybrid
+    optimizer = torch.optim.SGD([{'params':model.transformer.parameters(),'lr':args.learning_rate},
+                                 {'params':model.head.parameters(),'lr':args.learning_rate}],
+                                lr=args.learning_rate,momentum=0.9,weight_decay=args.weight_decay)
+    
     t_total = args.num_steps
     if args.decay_type == "cosine":
         scheduler = WarmupCosineSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
@@ -195,6 +204,7 @@ def train(args, model):
         model = DDP(model, message_size=250000000, gradient_predivide_factor=get_world_size())
 
     # Train!
+    start_time = time.time()
     logger.info("***** Running training *****")
     logger.info("  Total optimization steps = %d", args.num_steps)
     logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size)
@@ -285,7 +295,9 @@ def train(args, model):
 
     if args.local_rank in [-1, 0]:
         writer.close()
+    end_time = time.time()
     logger.info("Best Accuracy: \t%f" % best_acc)
+    logger.info("Total Training Time: \t%f" % ((end_time - start_time) / 3600))
     logger.info("End Training!")
 
 
@@ -294,7 +306,7 @@ def main():
     # Required parameters
     parser.add_argument("--name", required=True,
                         help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "soybean200","cotton", "CUB", "dog","car","air"], default="cifar10",
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "soyloc","cotton", "CUB", "dog","car","air"], default="cotton",
                         help="Which downstream task.")
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
                                                  "ViT-L_32", "ViT-H_14", "R50-ViT-B_16"],
@@ -305,14 +317,16 @@ def main():
     parser.add_argument("--output_dir", default="output", type=str,
                         help="The output directory where checkpoints will be written.")
 
-    parser.add_argument("--img_size", default=96, type=int,
+    parser.add_argument("--img_size", default=448, type=int,
                         help="Resolution size")
-    parser.add_argument("--resize_size", default=120, type=int,
+    parser.add_argument("--resize_size", default=600, type=int,
                         help="Resolution size")
-    parser.add_argument("--train_batch_size", default=512, type=int,
+    parser.add_argument("--train_batch_size", default=16, type=int,
                         help="Total batch size for training.")
-    parser.add_argument("--eval_batch_size", default=4, type=int,
+    parser.add_argument("--eval_batch_size", default=16, type=int,
                         help="Total batch size for eval.")
+    parser.add_argument("--num_token", default=12, type=int,
+                        help="the number of selected token in each layer, 12 for soy.loc, cotton and cub, 24 for dog.")
     parser.add_argument("--eval_every", default=100, type=int,
                         help="Run prediction on validation set every so many steps."
                              "Will always run one evaluation at the end of training.")

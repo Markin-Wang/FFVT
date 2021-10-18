@@ -44,9 +44,8 @@ def get_b16_config():
     config.transformer.dropout_rate = 0.1
     config.classifier = 'token'
     config.representation_size = None
-    config.split = 'non-overlap'
-    config.slide_step = 14
     config.feature_fusion= False
+    config.num_token = 12
     return config
 
 
@@ -54,7 +53,7 @@ def get_r50_b16_config():
     """Returns the Resnet50 + ViT-B/16 configuration."""
     config = get_b16_config()
     del config.patches.size
-    config.patches.grid = (14, 14)
+    config.patches.grid = (28, 28)
     config.resnet = ml_collections.ConfigDict()
     config.resnet.num_layers = (3, 4, 9)
     config.resnet.width_factor = 1
