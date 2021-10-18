@@ -2,14 +2,14 @@
 
 PyTorch implementation of 
 
-[MASK GUIDED ATTENTION FOR FINE-GRAINED PATCHY IMAGE CLASSIFICATION](https://arxiv.org/pdf/2102.02771.pdf)" ( ICIP 2021 ) 
+[Feature Fusion Vision Transformer for Fine-Grained Visual Categorization](https://arxiv.org/pdf/2107.02341.pdf) ( BMVC 2021 ) 
 
 If you use the code in this repo for your work, please cite the following bib entries:
 
     @INPROCEEDINGS{9506424,
       author={Wang, Jun and Yu, Xiaohan and Gao, Yongsheng},
       booktitle={2021 IEEE International Conference on Image Processing (ICIP)}, 
-      title={Mask Guided Attention For Fine-Grained Patchy Image Classification}, 
+      title={Feature Fusion Vision Transformer for Fine-Grained Visual Categorization}, 
       year={2021},
       volume={},
       number={},
