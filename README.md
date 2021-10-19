@@ -1,6 +1,6 @@
 # Feature Fusion Vision Transformer for Fine-Grained Visual Categorization
 
-PyTorch implementation of [Feature Fusion Vision Transformer for Fine-Grained Visual Categorization](https://arxiv.org/pdf/2107.02341.pdf) ( BMVC 2021 ). 
+PyTorch implementation of [Feature Fusion Vision Transformer for Fine-Grained Visual Categorization](https://arxiv.org/pdf/2107.02341.pdf) (BMVC 2021). 
 
 If you use the code in this repo for your work, please cite the following bib entries:
 
@@ -32,7 +32,7 @@ You can download the datasets from the links below:
 
 + [CUB-200-2011](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html).
 + [Stanford Dogs](http://vision.stanford.edu/aditya86/ImageNetDogs/)
-+ [Cotton and Soy.Loc](https://drive.google.com/drive/folders/1EF_iamMlnb0QYS2xiQRq--fxm7an4tv7?usp=sharing).
++ [Cotton and Soy.Loc](https://drive.google.com/drive/folders/1UkWRepieAvEVEn3Z8n1Zx04bASvvqL7G?usp=sharing).
 
 
 ## Training scripts for FFVT on Cotton dataset.
@@ -45,12 +45,17 @@ Train the model on the Cotton dataset. We run our experiments on 4x2080Ti/4x1080
 
     $ python3 -m torch.distributed.launch --nproc_per_node 4 train.py --name {name} --dataset soyloc --model_type ViT-B_16 --pretrained_dir {pretrained_model_dir} --img_size 384 --resize_size 500 --train_batch_size 8 --learning_rate 0.02 --num_steps 4750 --fp16 --eval_every 50 --feature_fusion
     
+## Training scripts for FFVT on CUB dataset.
+Train the model on the Cotton dataset. We run our experiments on 4x2080Ti/4x1080Ti with the batchsize of 32.
+
+    $ python3 -m torch.distributed.launch --nproc_per_node 4 train.py --name {name} --dataset CUB --model_type ViT-B_16 --pretrained_dir {pretrained_model_dir} --img_size 448 --resize_size 600 --train_batch_size 8 --learning_rate 0.02 --num_steps 10000 --fp16 --eval_every 200 --feature_fusion
+    
         
             
 ## Download  Models
 
 
-[Trained model Google Drive](https://drive.google.com/drive/folders/11SA7PGR9NbyJEaXFOHwA_PGiORdIEoYZ?usp=sharing)
+[Trained model Google Drive](https://drive.google.com/drive/folders/1k1vqc0avk_zpCAVuLNZpVX-w-Q3xXf-5?usp=sharing)
 
 
 
