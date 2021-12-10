@@ -176,7 +176,7 @@ def train(args, model):
     train_loader, test_loader = get_loader(args)
 
     # Prepare optimizer and scheduler
-    '''    
+     
     optimizer = torch.optim.SGD(model.parameters(),
                                 lr=args.learning_rate,
                                 momentum=0.9,
@@ -186,6 +186,7 @@ def train(args, model):
     optimizer = torch.optim.SGD([{'params':model.transformer.parameters(),'lr':args.learning_rate},
                                  {'params':model.head.parameters(),'lr':args.learning_rate}],
                                 lr=args.learning_rate,momentum=0.9,weight_decay=args.weight_decay)
+    '''
     
     t_total = args.num_steps
     if args.decay_type == "cosine":
