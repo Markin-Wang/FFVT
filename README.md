@@ -27,8 +27,8 @@ The following packages are required to run the scripts:
 - [PyTorch = 1.5]
 - [Torchvision]
 
-## Usage
-### Download Google pre-trained ViT models
+
+## Download Google pre-trained ViT models
 
 * [Get models in this link](https://console.cloud.google.com/storage/vit_models/): ViT-B_16, ViT-B_32...
 ```bash
