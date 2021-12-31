@@ -26,6 +26,7 @@ The following packages are required to run the scripts:
 - [Python >= 3.6]
 - [PyTorch = 1.5]
 - [Torchvision]
+- [Apex]
 
 
 ## Download Google pre-trained ViT models
