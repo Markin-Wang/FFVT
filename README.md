@@ -7,8 +7,8 @@ If you use the code in this repo for your work, please cite the following bib en
     @article{wang2021feature,
       title={Feature Fusion Vision Transformer for Fine-Grained Visual Categorization},
       author={Wang, Jun and Yu, Xiaohan and Gao, Yongsheng},
-      journal={British Machine Vision Conference },
-      pages={arXiv--2107},
+      journal={British Machine Vision Conference},
+      pages={xx-xx},
       year={2021}
     }
 
