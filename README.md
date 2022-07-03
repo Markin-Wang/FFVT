@@ -28,6 +28,9 @@ The following packages are required to run the scripts:
 - [Torchvision]
 - [Apex]
 
+```bash
+conda env create --name [env_name] --file env.yml
+```
 
 ## Download Google pre-trained ViT models
 
